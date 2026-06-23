@@ -1,0 +1,34 @@
+:root {
+  color-scheme: dark;
+  --bg: #0a0e14;
+  --panel: #131a26;
+  --accent: #4fd1c5;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: var(--bg);
+  color: #e6edf3;
+  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+  overflow: hidden;
+}
+
+#game-root {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#game-root canvas {
+  display: block;
+  box-shadow: 0 0 40px rgba(0, 0, 0, 0.6);
+}
