@@ -32,6 +32,8 @@ export interface EnemyDef {
   readonly radius: number;
 
   // --- Special behaviour flags ---
+  /** Chance [0,1] to dodge a non-splash projectile (rewards AoE turrets). */
+  readonly evasion: number;
   /** Can only be hit by Turrets, not Traps. */
   readonly flying: boolean;
   /** Charge this enemy is fully immune to (no damage, no status). */
@@ -53,6 +55,7 @@ export interface EnemyDef {
 
 const DEFAULTS = {
   shield: 0,
+  evasion: 0,
   flying: false,
   immuneTo: null,
   healPerTick: 0,
@@ -88,6 +91,7 @@ export const ENEMY_DEFS: Readonly<Record<EnemyKind, EnemyDef>> = {
     breachDamage: 1,
     color: 0xe07be0,
     radius: 9,
+    evasion: 0.35,
   },
   [EnemyKind.Bulwark]: {
     ...DEFAULTS,

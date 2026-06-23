@@ -15,7 +15,8 @@ export const GAME_HEIGHT = PLAYFIELD_HEIGHT + TOP_HUD_HEIGHT;
 export const SceneKeys = {
   Boot: "BootScene",
   MainMenu: "MainMenuScene",
-  Grid: "GridScene",
+  Game: "GameScene",
+  Hud: "HudScene",
 } as const;
 
 // Tile colors for rendering the grid.

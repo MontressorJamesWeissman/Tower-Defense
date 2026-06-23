@@ -80,6 +80,17 @@ export function pathLength(waypoints: readonly Point[]): number {
   return total;
 }
 
+/** Shortest distance from point p to the segment a→b. Used for piercing shots. */
+export function distanceToSegment(p: Point, a: Point, b: Point): number {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq === 0) return distance(p, a);
+  let t = ((p.x - a.x) * dx + (p.y - a.y) * dy) / lenSq;
+  t = Math.max(0, Math.min(1, t));
+  return distance(p, { x: a.x + t * dx, y: a.y + t * dy });
+}
+
 /**
  * Given a set of waypoints and a distance travelled along the path, return the
  * interpolated pixel position and whether the end was reached.
