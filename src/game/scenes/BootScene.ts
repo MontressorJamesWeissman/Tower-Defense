@@ -13,6 +13,6 @@ export class BootScene extends Phaser.Scene {
 
   create(): void {
     generateFxTextures(this);
-    this.scene.start(SceneKeys.MainMenu);
+    this.scene.start(SceneKeys.Preload);
   }
 }

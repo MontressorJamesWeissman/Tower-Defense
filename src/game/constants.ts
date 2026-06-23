@@ -14,6 +14,7 @@ export const GAME_HEIGHT = PLAYFIELD_HEIGHT + TOP_HUD_HEIGHT;
 // Scene keys.
 export const SceneKeys = {
   Boot: "BootScene",
+  Preload: "PreloadScene",
   MainMenu: "MainMenuScene",
   Game: "GameScene",
   Hud: "HudScene",

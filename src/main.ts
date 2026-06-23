@@ -1,5 +1,6 @@
 import Phaser from "phaser";
 import { BootScene } from "./game/scenes/BootScene";
+import { PreloadScene } from "./game/scenes/PreloadScene";
 import { MainMenuScene } from "./game/scenes/MainMenuScene";
 import { GameScene } from "./game/scenes/GameScene";
 import { HudScene } from "./game/scenes/HudScene";
@@ -28,7 +29,7 @@ const config: Phaser.Types.Core.GameConfig = {
     pixelArt: false,
     antialias: true,
   },
-  scene: [BootScene, MainMenuScene, GameScene, HudScene],
+  scene: [BootScene, PreloadScene, MainMenuScene, GameScene, HudScene],
 };
 
 // eslint-disable-next-line no-new
