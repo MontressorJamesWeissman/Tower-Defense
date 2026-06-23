@@ -2,6 +2,7 @@ import Phaser from "phaser";
 import { GAME_WIDTH, GAME_HEIGHT, SceneKeys } from "../constants";
 import { STRONGHOLDS } from "../logic/strongholds";
 import { loadSave, resetProgress } from "../state/save";
+import { audio } from "../audio/AudioManager";
 
 /** MainMenuScene — title + Stronghold select with localStorage progress. */
 export class MainMenuScene extends Phaser.Scene {
@@ -12,6 +13,7 @@ export class MainMenuScene extends Phaser.Scene {
   create(): void {
     const cx = GAME_WIDTH / 2;
     const save = loadSave();
+    audio.startMusic("menu");
 
     this.add
       .text(cx, 70, "BASTION PROTOCOL", { fontSize: "52px", color: "#4fd1c5", fontStyle: "bold" })
@@ -44,9 +46,15 @@ export class MainMenuScene extends Phaser.Scene {
         .setDepth(2);
       if (unlocked) {
         bg.setInteractive({ useHandCursor: true });
-        bg.on("pointerover", () => bg.setFillStyle(color, 1));
+        bg.on("pointerover", () => {
+          bg.setFillStyle(color, 1);
+          audio.playUI("hover");
+        });
         bg.on("pointerout", () => bg.setFillStyle(color, 0.9));
-        bg.on("pointerdown", () => this.scene.start(SceneKeys.Game, { strongholdIndex: i }));
+        bg.on("pointerdown", () => {
+          audio.playUI("confirm");
+          this.scene.start(SceneKeys.Game, { strongholdIndex: i });
+        });
       }
     });
 

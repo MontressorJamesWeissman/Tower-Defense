@@ -9,6 +9,7 @@ import {
   cooldownProgress,
   remainingCooldownMs,
 } from "../logic/abilities";
+import { audio } from "../audio/AudioManager";
 import type { GameScene, BuildSelection } from "./GameScene";
 import type { WaveStats } from "../state/RunState";
 
@@ -130,6 +131,7 @@ export class HudScene extends Phaser.Scene {
           .setDepth(100);
         const sel = builder(charge);
         bg.on("pointerdown", () => this.onPaletteClick(sel, bg));
+        bg.on("pointerover", () => audio.playUI("hover"));
         this.add.text(x, cy, charge[0], { fontSize: "13px", color: "#0a0e14", fontStyle: "bold" }).setOrigin(0.5).setDepth(101);
         this.paletteButtons.push({ sel, bg });
       });
@@ -191,8 +193,14 @@ export class HudScene extends Phaser.Scene {
       const cdOverlay = this.add.rectangle(0, size / 2, size, 0, 0x0a0e14, 0.7).setOrigin(0.5, 1);
       const cdText = this.add.text(0, 0, "", { fontSize: "11px", color: "#ffffff", fontStyle: "bold" }).setOrigin(0.5);
       const container = this.add.container(x + size / 2, y, [bg, label, hot, cdOverlay, cdText]).setDepth(100);
-      bg.on("pointerdown", () => this.gameScene.requestAbility(kind));
-      bg.on("pointerover", () => this.toast(`${def.name}: ${def.description}`));
+      bg.on("pointerdown", () => {
+        audio.playUI("click");
+        this.gameScene.requestAbility(kind);
+      });
+      bg.on("pointerover", () => {
+        audio.playUI("hover");
+        this.toast(`${def.name}: ${def.description}`);
+      });
       this.abilityButtons.push({ kind, container, cdOverlay, cdText });
     });
   }
@@ -202,6 +210,7 @@ export class HudScene extends Phaser.Scene {
   // -------------------------------------------------------------------------
 
   private onPaletteClick(sel: BuildSelection, bg: Phaser.GameObjects.Rectangle): void {
+    audio.playUI("click");
     const current = this.gameScene.hasBuildSelection();
     const same = current && JSON.stringify(current) === JSON.stringify(sel);
     this.gameScene.setBuildSelection(same ? null : sel);
@@ -226,9 +235,19 @@ export class HudScene extends Phaser.Scene {
     const bg = this.add.rectangle(0, 0, w, h, color, 0.9).setOrigin(0, 0).setStrokeStyle(2, 0x0a0e14, 1).setInteractive({ useHandCursor: true });
     const txt = this.add.text(w / 2, h / 2, label, { fontSize: "13px", color: "#ffffff", fontStyle: "bold" }).setOrigin(0.5);
     const c = this.add.container(x, y, [bg, txt]);
-    bg.on("pointerdown", onClick);
-    bg.on("pointerover", () => bg.setFillStyle(color, 1));
-    bg.on("pointerout", () => bg.setFillStyle(color, 0.9));
+    bg.on("pointerdown", () => {
+      audio.playUI("click");
+      onClick();
+    });
+    bg.on("pointerover", () => {
+      bg.setFillStyle(color, 1);
+      audio.playUI("hover");
+      this.tweens.add({ targets: c, scaleX: 1.04, scaleY: 1.04, duration: 90, ease: "Quad.easeOut" });
+    });
+    bg.on("pointerout", () => {
+      bg.setFillStyle(color, 0.9);
+      this.tweens.add({ targets: c, scaleX: 1, scaleY: 1, duration: 90, ease: "Quad.easeOut" });
+    });
     return c;
   }
 

@@ -1,9 +1,10 @@
 import Phaser from "phaser";
 import { SceneKeys } from "../constants";
+import { generateFxTextures } from "../fx/textures";
 
 /**
- * BootScene — minimal asset/init step. We use generated graphics (no external
- * art assets) so this just transitions straight to the main menu.
+ * BootScene — generates the procedural FX textures (glow/ring) once, then
+ * transitions to the main menu. No external art assets are used.
  */
 export class BootScene extends Phaser.Scene {
   constructor() {
@@ -11,6 +12,7 @@ export class BootScene extends Phaser.Scene {
   }
 
   create(): void {
+    generateFxTextures(this);
     this.scene.start(SceneKeys.MainMenu);
   }
 }

@@ -35,7 +35,9 @@ import {
 import { RunState } from "../state/RunState";
 import { recordClear } from "../state/save";
 import { STRONGHOLDS } from "../logic/strongholds";
-import { Sfx } from "../audio/sfx";
+import { audio } from "../audio/AudioManager";
+import { Vfx } from "../fx/Vfx";
+import { settings } from "../state/settings";
 import { Enemy } from "../entities/Enemy";
 import { Turret } from "../entities/Turret";
 import { Trap } from "../entities/Trap";
@@ -96,6 +98,7 @@ export class GameScene extends Phaser.Scene {
 
   private hoverRect!: Phaser.GameObjects.Rectangle;
   private hud!: HudScene;
+  private vfx!: Vfx;
   private paused = false;
 
   constructor() {
@@ -115,6 +118,8 @@ export class GameScene extends Phaser.Scene {
     this.pathWaypoints = this.def.paths.map((p) => pathToWaypoints(this.grid, p));
 
     this.drawStaticBoard();
+    this.vfx = new Vfx(this);
+    audio.startMusic("setup");
 
     this.hoverRect = this.add
       .rectangle(0, 0, this.grid.tileSize, this.grid.tileSize, TileColors.hover, 0.35)
@@ -301,6 +306,8 @@ export class GameScene extends Phaser.Scene {
     this.spawnCursor = 0;
     this.spawnedCount = 0;
     this.waveElapsedMs = 0;
+    audio.playFanfare("start");
+    audio.startMusic("assault");
     this.hud.refresh();
   }
 
@@ -309,6 +316,7 @@ export class GameScene extends Phaser.Scene {
     this.run.waveIndex++;
     this.run.phase = "setup";
     addCogs(this.run.economy, this.run.currentWave.setupCogs);
+    audio.startMusic("setup");
     this.hud.showSummary(null);
     this.hud.refresh();
   }
@@ -495,7 +503,10 @@ export class GameScene extends Phaser.Scene {
 
   private finishPlace(coord: GridCoord, device: PlacedDevice): void {
     this.occupied.add(coordKey(coord));
-    Sfx.play("place");
+    const center = tileCenter(this.grid, coord);
+    const color = "charge" in device ? CHARGE_META[(device as Turret | Trap).charge].color : 0x4fd1c5;
+    this.vfx.placementPulse(center.x, center.y, color);
+    audio.playUI("confirm");
     this.select(device);
     this.hud.refresh();
   }
@@ -546,7 +557,15 @@ export class GameScene extends Phaser.Scene {
       reactionFx: (x, y, r) => this.reactionFx(x, y, r),
       explosionFx: (x, y, r, color) => this.explosionFx(x, y, r, color),
       floatingText: (x, y, t, c) => this.floatingText(x, y, t, c),
+      turretFire: (from, to, charge) => this.turretFire(from, to, charge),
     };
+  }
+
+  private turretFire(from: Point, to: Point, charge: Charge): void {
+    const color = CHARGE_META[charge].color;
+    audio.playShot(charge);
+    this.vfx.muzzleFlash(from.x, from.y, color);
+    this.vfx.bolt(from, to, color, () => audio.playImpact(charge));
   }
 
   private hitEnemy(enemy: Enemy, damage: number, opts: DamageOptions = {}): void {
@@ -569,6 +588,13 @@ export class GameScene extends Phaser.Scene {
     enemy.redrawHpBar();
     enemy.hitFlash(this);
 
+    // Floating damage number for primary hits.
+    const dealt = res.hpDamage + res.shieldAbsorbed;
+    if (!opts.silent && dealt > 0) {
+      const col = charge ? CHARGE_META[charge].cssColor : "#e6edf3";
+      this.floatingText(enemy.x + Phaser.Math.Between(-6, 6), enemy.y - enemy.def.radius - 6, `${Math.round(dealt)}`, col);
+    }
+
     if (charge && !opts.noReaction) {
       const app = applyCharge(enemy.state, charge, now);
       if (app.reaction) this.applyReaction(enemy, app.reaction, app.spreadCharge);
@@ -586,7 +612,7 @@ export class GameScene extends Phaser.Scene {
   private applyReaction(enemy: Enemy, reaction: ReactionDefinition, spreadCharge: Charge | null): void {
     const now = this.run.runClockMs;
     const e = reaction.effect;
-    Sfx.play("reaction");
+    audio.playReaction(reaction.kind);
     this.reactionFx(enemy.x, enemy.y, reaction);
 
     if (e.shieldStrip > 0) {
@@ -617,9 +643,9 @@ export class GameScene extends Phaser.Scene {
           // Short-Circuit only chains to charged enemies.
           if (reaction.kind === ReactionKind.ShortCircuit) {
             if (other.state.activeCharge === null) continue;
-            this.hitEnemy(other, e.bonusDamage, { noReaction: true, splash: true });
+            this.hitEnemy(other, e.bonusDamage, { noReaction: true, splash: true, silent: true });
           } else {
-            this.hitEnemy(other, e.bonusDamage * 0.6, { noReaction: true, splash: true });
+            this.hitEnemy(other, e.bonusDamage * 0.6, { noReaction: true, splash: true, silent: true });
           }
         }
       }
@@ -634,7 +660,7 @@ export class GameScene extends Phaser.Scene {
     addSurge(this.run.economy, reward.surge);
     this.run.waveStats.cogsEarned += reward.cogs;
     this.run.waveStats.enemiesKilled++;
-    Sfx.play("kill");
+    audio.playDeath();
     this.floatingText(enemy.x, enemy.y - 10, `+${reward.cogs}`, "#e6c14f");
     this.deathFx(enemy.x, enemy.y, enemy.def.color);
     enemy.destroy();
@@ -661,7 +687,7 @@ export class GameScene extends Phaser.Scene {
     if (!isReady(this.run.cooldowns[kind], now) || this.run.economy.surge < def.surgeCost) return;
     this.run.economy.surge -= def.surgeCost;
     triggerCooldown(this.run.cooldowns[kind], now, def.cooldownMs);
-    Sfx.play("ability");
+    audio.playAbility();
 
     const ctx = this.context();
     switch (kind) {
@@ -726,8 +752,46 @@ export class GameScene extends Phaser.Scene {
 
   private reactionFx(x: number, y: number, reaction: ReactionDefinition): void {
     const color = this.reactionColor(reaction.kind);
-    this.explosionFx(x, y, Math.max(30, reaction.effect.aoeRadius || 40), color);
-    this.floatingText(x, y - 18, reaction.name, "#ffffff");
+    const radius = Math.max(40, reaction.effect.aoeRadius || 44);
+    this.vfx.reactionBurst(x, y, color, radius);
+    this.screenColorPulse(color);
+    this.reactionNameCard(x, y, reaction.name, color);
+  }
+
+  /** Floating reaction name that pops up in the display font, then fades. */
+  private reactionNameCard(x: number, y: number, name: string, color: number): void {
+    const css = `#${color.toString(16).padStart(6, "0")}`;
+    const t = this.add
+      .text(x, y - 22, `${name}!`, {
+        fontFamily: "Orbitron, sans-serif",
+        fontSize: "16px",
+        color: css,
+        fontStyle: "bold",
+        stroke: "#05080d",
+        strokeThickness: 3,
+      })
+      .setOrigin(0.5)
+      .setDepth(72)
+      .setScale(0.6);
+    this.tweens.add({ targets: t, scale: 1, duration: 140, ease: "Back.easeOut" });
+    this.tweens.add({ targets: t, y: y - 44, alpha: 0, delay: 420, duration: 460, onComplete: () => t.destroy() });
+  }
+
+  /** Brief full-screen color wash (fade in ~50ms / out ~250ms). Skipped if VFX reduced. */
+  private screenColorPulse(color: number): void {
+    if (settings.reduceVfx) return;
+    const r = this.add.rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, color, 0).setOrigin(0, 0).setDepth(80);
+    this.tweens.add({
+      targets: r,
+      alpha: 0.16,
+      duration: 50,
+      yoyo: true,
+      hold: 0,
+      ease: "Quad.easeOut",
+      onComplete: () => {
+        this.tweens.add({ targets: r, alpha: 0, duration: 250, onComplete: () => r.destroy() });
+      },
+    });
   }
 
   private reactionColor(kind: ReactionKind): number {
@@ -744,33 +808,16 @@ export class GameScene extends Phaser.Scene {
   }
 
   private explosionFx(x: number, y: number, radius: number, color: number): void {
-    const ring = this.add.circle(x, y, radius * 0.4, color, 0.4).setDepth(65);
-    this.tweens.add({
-      targets: ring,
-      scale: 2.4,
-      alpha: 0,
-      duration: 320,
-      onComplete: () => ring.destroy(),
-    });
+    this.vfx.shockwave(x, y, color, radius, 320, 0.7);
+    this.vfx.burst(x, y, color, 10, radius * 0.6, 0.55, 380);
   }
 
   private deathFx(x: number, y: number, color: number): void {
-    for (let i = 0; i < 5; i++) {
-      const p = this.add.circle(x, y, 3, color).setDepth(64);
-      const ang = Math.random() * Math.PI * 2;
-      const d = 12 + Math.random() * 14;
-      this.tweens.add({
-        targets: p,
-        x: x + Math.cos(ang) * d,
-        y: y + Math.sin(ang) * d,
-        alpha: 0,
-        duration: 380,
-        onComplete: () => p.destroy(),
-      });
-    }
+    this.vfx.death(x, y, color);
   }
 
   private screenFlash(color: number, alpha: number): void {
+    if (settings.reduceVfx) return;
     const r = this.add.rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, color, alpha).setOrigin(0, 0).setDepth(80);
     this.tweens.add({ targets: r, alpha: 0, duration: 280, onComplete: () => r.destroy() });
   }
@@ -845,9 +892,9 @@ export class GameScene extends Phaser.Scene {
   private onBreach(enemy: Enemy): void {
     this.run.coreIntegrity = Math.max(0, this.run.coreIntegrity - enemy.def.breachDamage);
     this.run.waveStats.breaches += enemy.def.breachDamage;
-    Sfx.play("breach");
-    this.cameras.main.shake(160, 0.01);
-    this.screenFlash(0xe85a5a, 0.18);
+    audio.playCoreDamage();
+    if (!settings.reduceVfx) this.cameras.main.shake(160, 0.01);
+    this.screenFlash(0xe85a5a, 0.2);
     if (this.run.coreIntegrity <= 0) this.loseRun();
   }
 
@@ -859,9 +906,10 @@ export class GameScene extends Phaser.Scene {
   }
 
   private winWave(): void {
+    audio.playFanfare("clear");
     if (this.run.isFinalWave) {
       this.run.phase = "won";
-      Sfx.play("win");
+      audio.stopMusic();
       recordClear(STRONGHOLDS.indexOf(this.def), STRONGHOLDS.length);
       this.hud.showEndScreen(true);
     } else {
@@ -872,7 +920,8 @@ export class GameScene extends Phaser.Scene {
 
   private loseRun(): void {
     this.run.phase = "lost";
-    Sfx.play("lose");
+    audio.playCoreDamage();
+    audio.stopMusic();
     for (const e of this.enemies) e.destroy();
     this.enemies = [];
     this.hud.showEndScreen(false);

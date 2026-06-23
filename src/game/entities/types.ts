@@ -2,6 +2,7 @@
 
 import { Charge } from "../logic/elements";
 import { ReactionDefinition } from "../logic/reactions";
+import { Point } from "../logic/grid";
 import type { Enemy } from "./Enemy";
 
 export interface DamageOptions {
@@ -13,6 +14,8 @@ export interface DamageOptions {
   splash?: boolean;
   /** Suppress reaction resolution (used by reaction effects to avoid loops). */
   noReaction?: boolean;
+  /** Suppress the floating damage number (dot ticks, secondary AoE, etc.). */
+  silent?: boolean;
 }
 
 /**
@@ -32,4 +35,6 @@ export interface CombatContext {
   /** Generic radial burst FX (used by detonations and ability blasts). */
   explosionFx(x: number, y: number, radius: number, color: number): void;
   floatingText(x: number, y: number, text: string, color: string): void;
+  /** Cosmetic turret shot: muzzle flash + bolt + impact + shot/impact SFX. */
+  turretFire(from: Point, to: Point, charge: Charge): void;
 }

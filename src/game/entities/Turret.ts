@@ -24,12 +24,14 @@ export class Turret {
   readonly investedCosts: number[] = [];
   stats: TurretStats;
 
+  private readonly scene: Phaser.Scene;
   private readonly container: Phaser.GameObjects.Container;
   private readonly rangeCircle: Phaser.GameObjects.Arc;
   private readonly barrel: Phaser.GameObjects.Rectangle;
   private lastFireAtMs = -99999;
 
   constructor(scene: Phaser.Scene, grid: GridConfig, coord: GridCoord, charge: Charge) {
+    this.scene = scene;
     this.coord = coord;
     this.charge = charge;
     this.center = tileCenter(grid, coord);
@@ -89,24 +91,43 @@ export class Turret {
   }
 
   private fire(ctx: CombatContext, target: Enemy, nowMs: number): void {
-    // Aim the barrel.
+    // Aim the barrel and give it a quick recoil pop (follow-through).
     const tp = target.pos();
     this.barrel.setRotation(Phaser.Math.Angle.Between(this.center.x, this.center.y, tp.x, tp.y) + Math.PI / 2);
+    this.recoil();
 
     if (this.stats.resistShredMs > 0) {
       applyResistShred(target.state, this.stats.resistShredMs, nowMs);
     }
 
     if (this.stats.pierce) {
+      // Bolt travels to the far end of the pierce line.
+      const dir = Phaser.Math.Angle.Between(this.center.x, this.center.y, tp.x, tp.y);
+      ctx.turretFire(this.center, {
+        x: this.center.x + Math.cos(dir) * this.stats.range,
+        y: this.center.y + Math.sin(dir) * this.stats.range,
+      }, this.charge);
       this.firePierce(ctx, target);
     } else if (this.stats.splashRadius > 0) {
+      ctx.turretFire(this.center, tp, this.charge);
       ctx.hitEnemy(target, this.stats.damage, { charge: this.charge, splash: true });
       for (const e of ctx.enemiesInRadius(tp.x, tp.y, this.stats.splashRadius)) {
-        if (e !== target) ctx.hitEnemy(e, this.stats.damage * 0.6, { charge: this.charge, splash: true });
+        if (e !== target) ctx.hitEnemy(e, this.stats.damage * 0.6, { charge: this.charge, splash: true, silent: true });
       }
     } else {
+      ctx.turretFire(this.center, tp, this.charge);
       ctx.hitEnemy(target, this.stats.damage, { charge: this.charge });
     }
+  }
+
+  private recoil(): void {
+    this.scene.tweens.add({
+      targets: this.barrel,
+      scaleY: 1.35,
+      duration: 60,
+      yoyo: true,
+      ease: "Quad.easeOut",
+    });
   }
 
   private firePierce(ctx: CombatContext, target: Enemy): void {
