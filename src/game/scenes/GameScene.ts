@@ -540,7 +540,7 @@ export class GameScene extends Phaser.Scene {
     return {
       now: () => this.run.runClockMs,
       enemiesInRadius: (x, y, r) => this.enemies.filter((e) => e.alive && distance({ x, y }, e.pos()) <= r),
-      livingEnemies: () => this.enemies,
+      livingEnemies: () => this.enemies.filter((e) => e.alive),
       hitEnemy: (e, dmg, opts) => this.hitEnemy(e, dmg, opts),
       chargeEnemy: (e, charge) => this.chargeEnemy(e, charge),
       reactionFx: (x, y, r) => this.reactionFx(x, y, r),

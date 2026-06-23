@@ -246,6 +246,7 @@ export class HudScene extends Phaser.Scene {
 
   /** Cheap per-frame update of live readouts. */
   tick(): void {
+    if (!this.cogText) return; // HUD not finished building yet
     const run = this.gameScene.run;
     this.cogText.setText(`¢ ${run.economy.cogs}`);
 
