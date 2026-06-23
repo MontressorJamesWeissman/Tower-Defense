@@ -35,6 +35,7 @@ import {
 import { RunState } from "../state/RunState";
 import { recordClear } from "../state/save";
 import { STRONGHOLDS } from "../logic/strongholds";
+import { Sfx } from "../audio/sfx";
 import { Enemy } from "../entities/Enemy";
 import { Turret } from "../entities/Turret";
 import { Trap } from "../entities/Trap";
@@ -494,6 +495,7 @@ export class GameScene extends Phaser.Scene {
 
   private finishPlace(coord: GridCoord, device: PlacedDevice): void {
     this.occupied.add(coordKey(coord));
+    Sfx.play("place");
     this.select(device);
     this.hud.refresh();
   }
@@ -584,6 +586,7 @@ export class GameScene extends Phaser.Scene {
   private applyReaction(enemy: Enemy, reaction: ReactionDefinition, spreadCharge: Charge | null): void {
     const now = this.run.runClockMs;
     const e = reaction.effect;
+    Sfx.play("reaction");
     this.reactionFx(enemy.x, enemy.y, reaction);
 
     if (e.shieldStrip > 0) {
@@ -631,6 +634,7 @@ export class GameScene extends Phaser.Scene {
     addSurge(this.run.economy, reward.surge);
     this.run.waveStats.cogsEarned += reward.cogs;
     this.run.waveStats.enemiesKilled++;
+    Sfx.play("kill");
     this.floatingText(enemy.x, enemy.y - 10, `+${reward.cogs}`, "#e6c14f");
     this.deathFx(enemy.x, enemy.y, enemy.def.color);
     enemy.destroy();
@@ -657,6 +661,7 @@ export class GameScene extends Phaser.Scene {
     if (!isReady(this.run.cooldowns[kind], now) || this.run.economy.surge < def.surgeCost) return;
     this.run.economy.surge -= def.surgeCost;
     triggerCooldown(this.run.cooldowns[kind], now, def.cooldownMs);
+    Sfx.play("ability");
 
     const ctx = this.context();
     switch (kind) {
@@ -840,6 +845,7 @@ export class GameScene extends Phaser.Scene {
   private onBreach(enemy: Enemy): void {
     this.run.coreIntegrity = Math.max(0, this.run.coreIntegrity - enemy.def.breachDamage);
     this.run.waveStats.breaches += enemy.def.breachDamage;
+    Sfx.play("breach");
     this.cameras.main.shake(160, 0.01);
     this.screenFlash(0xe85a5a, 0.18);
     if (this.run.coreIntegrity <= 0) this.loseRun();
@@ -855,6 +861,7 @@ export class GameScene extends Phaser.Scene {
   private winWave(): void {
     if (this.run.isFinalWave) {
       this.run.phase = "won";
+      Sfx.play("win");
       recordClear(STRONGHOLDS.indexOf(this.def), STRONGHOLDS.length);
       this.hud.showEndScreen(true);
     } else {
@@ -865,6 +872,7 @@ export class GameScene extends Phaser.Scene {
 
   private loseRun(): void {
     this.run.phase = "lost";
+    Sfx.play("lose");
     for (const e of this.enemies) e.destroy();
     this.enemies = [];
     this.hud.showEndScreen(false);

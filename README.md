@@ -45,13 +45,41 @@ src/game/scenes/    Phaser rendering (Boot, MainMenu, Grid)
 tests/              Vitest suites
 ```
 
-## Build progress
+## How to play
+
+1. `npm install && npm run dev`, open the served URL, pick a Stronghold.
+2. **Setup Phase**: choose a BUILD item (a Turret/Trap charge, or a Collector
+   mode) from the side panel, then click a tile. Turrets/Collectors go on
+   buildable tiles; Traps go on the path. Select a placed device to upgrade,
+   toggle, or sell it. Press **START WAVE** when ready.
+3. **Assault Phase**: enemies march toward the Core. Keep building/upgrading as
+   Cogs come in. Land a second, *different* charge on an enemy to trigger a
+   **Reaction**. Spend **Support Abilities** (hotkeys 1–6) — their cooldowns
+   persist across the whole run, so time them.
+4. Clear every wave without the Core Integrity hitting zero. `ESC` pauses /
+   cancels selection.
+
+## Build progress — all milestones complete
 
 - [x] M1 — Scaffold Vite + TS + Phaser, dev server running
-- [x] M2 — Grid system + buildable tiles + path rendering (Stronghold 1)
-- [x] M3 — Pure-logic modules + Vitest tests (reactions, economy, grid, devices, waves)
-- [ ] M4 — Setup Phase: place/upgrade Turrets & Traps with live Cog deduction
-- [ ] M5 — Enemy spawning, path-following, Core Integrity on breach
-- [ ] M6 — Turret targeting/firing + Charge application
-- [ ] M7 — Reaction triggering
-- [ ] M8–16 — Traps, Collectors, Abilities, full roster, UI, tuning, save, polish
+- [x] M2 — Grid system + buildable tiles + path rendering
+- [x] M3 — Pure-logic modules + Vitest tests (reactions, economy, grid, devices, waves, combat)
+- [x] M4 — Setup Phase: place/upgrade Turrets & Traps with live Cog deduction
+- [x] M5 — Enemy spawning, path-following, Core Integrity on breach
+- [x] M6 — Turret targeting/firing + Charge application
+- [x] M7 — Reaction triggering (data-driven, with AoE/freeze/DoT/chain/spread)
+- [x] M8 — Trap Devices + upgrades (Snare/Mine Layer/Pulse Emitter)
+- [x] M9 — Collector Devices + enforced no-same-mode-overlap rule
+- [x] M10 — Support Abilities with persistent cross-wave cooldowns
+- [x] M11 — Full 8-archetype enemy roster + special behaviours
+- [x] M12 — Full UI overlay (HUD, device panel, ability bar, summary/end screens, pause)
+- [x] M13 — Stronghold 1 fully wired & runnable
+- [x] M14 — Save/progress persistence via localStorage
+- [x] M15 — Polish: screen shake, hit-flash, reaction/death particles, sfx hooks, menu
+- [x] M16 — 5 Strongholds total (incl. multi-lane levels)
+
+84 Vitest tests pass; `tsc` clean; production build succeeds.
+
+> **Verification note:** this was built in a headless environment, so the build,
+> typecheck, and unit tests are all verified green, but the canvas hasn't been
+> visually playtested. Run `npm run dev` to playtest feel/balance.

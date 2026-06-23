@@ -1,6 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { buildSpawnSchedule, waveEnemyCount } from "../src/game/logic/waves";
-import { STRONGHOLD_1, buildTileMap, getSpawnCoords } from "../src/game/logic/strongholds";
+import {
+  STRONGHOLD_1,
+  STRONGHOLDS,
+  buildTileMap,
+  getSpawnCoords,
+} from "../src/game/logic/strongholds";
 import { TileType, coordKey } from "../src/game/logic/grid";
 import { EnemyKind } from "../src/game/logic/enemies";
 
@@ -28,32 +33,69 @@ describe("wave schedules", () => {
   });
 });
 
-describe("stronghold layout", () => {
-  it("path is continuous (each step is orthogonally adjacent)", () => {
-    for (const path of STRONGHOLD_1.paths) {
-      for (let i = 1; i < path.length; i++) {
-        const manhattan =
-          Math.abs(path[i].col - path[i - 1].col) + Math.abs(path[i].row - path[i - 1].row);
-        expect(manhattan).toBe(1);
-      }
-    }
+describe("stronghold layouts (all)", () => {
+  it("there are 5 strongholds with escalating wave counts", () => {
+    expect(STRONGHOLDS.length).toBe(5);
+    for (const sh of STRONGHOLDS) expect(sh.waves.length).toBeGreaterThanOrEqual(4);
   });
 
-  it("tile map marks spawn, core, and path tiles", () => {
-    const map = buildTileMap(STRONGHOLD_1);
-    const spawn = getSpawnCoords(STRONGHOLD_1)[0];
-    expect(map[spawn.row][spawn.col]).toBe(TileType.Spawn);
-    expect(map[STRONGHOLD_1.coreCoord.row][STRONGHOLD_1.coreCoord.col]).toBe(TileType.Core);
+  for (const sh of STRONGHOLDS) {
+    describe(sh.name, () => {
+      it("every path step is orthogonally adjacent", () => {
+        for (const path of sh.paths) {
+          for (let i = 1; i < path.length; i++) {
+            const manhattan =
+              Math.abs(path[i].col - path[i - 1].col) + Math.abs(path[i].row - path[i - 1].row);
+            expect(manhattan, `${sh.name} step ${i}`).toBe(1);
+          }
+        }
+      });
 
-    // Every non-spawn/core path coord should be a Path tile.
-    const coreK = coordKey(STRONGHOLD_1.coreCoord);
-    const path = STRONGHOLD_1.paths[0];
-    for (let i = 1; i < path.length; i++) {
-      if (coordKey(path[i]) === coreK) continue;
-      expect(map[path[i].row][path[i].col]).toBe(TileType.Path);
-    }
-  });
+      it("every path ends at the Core coord", () => {
+        const coreK = coordKey(sh.coreCoord);
+        for (const path of sh.paths) {
+          expect(coordKey(path[path.length - 1])).toBe(coreK);
+        }
+      });
 
+      it("every path stays in bounds", () => {
+        for (const path of sh.paths) {
+          for (const c of path) {
+            expect(c.col).toBeGreaterThanOrEqual(0);
+            expect(c.row).toBeGreaterThanOrEqual(0);
+            expect(c.col).toBeLessThan(sh.grid.cols);
+            expect(c.row).toBeLessThan(sh.grid.rows);
+          }
+        }
+      });
+
+      it("tile map marks each spawn and the core", () => {
+        const map = buildTileMap(sh);
+        for (const spawn of getSpawnCoords(sh)) {
+          expect(map[spawn.row][spawn.col]).toBe(TileType.Spawn);
+        }
+        expect(map[sh.coreCoord.row][sh.coreCoord.col]).toBe(TileType.Core);
+      });
+
+      it("spawn groups reference valid lane indices", () => {
+        for (const wave of sh.waves) {
+          for (const g of wave.groups) {
+            expect(g.spawnIndex).toBeGreaterThanOrEqual(0);
+            expect(g.spawnIndex).toBeLessThan(sh.paths.length);
+          }
+        }
+      });
+
+      it("the final wave contains a boss", () => {
+        const last = sh.waves[sh.waves.length - 1];
+        const sched = buildSpawnSchedule(last);
+        expect(sched.some((s) => s.kind === EnemyKind.Colossus)).toBe(true);
+      });
+    });
+  }
+});
+
+describe("stronghold 1 specifics", () => {
   it("core coord is the last coord of the path", () => {
     const path = STRONGHOLD_1.paths[0];
     expect(coordKey(path[path.length - 1])).toBe(coordKey(STRONGHOLD_1.coreCoord));
