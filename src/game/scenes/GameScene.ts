@@ -1,5 +1,5 @@
 import Phaser from "phaser";
-import { GAME_WIDTH, GAME_HEIGHT, PLAYFIELD_WIDTH, TOP_HUD_HEIGHT, TileColors, SceneKeys } from "../constants";
+import { GAME_WIDTH, GAME_HEIGHT, PLAYFIELD_WIDTH, PLAYFIELD_HEIGHT, TOP_HUD_HEIGHT, TileColors, SceneKeys } from "../constants";
 import {
   GridConfig,
   GridCoord,
@@ -37,6 +37,9 @@ import { recordClear } from "../state/save";
 import { STRONGHOLDS } from "../logic/strongholds";
 import { audio } from "../audio/AudioManager";
 import { Vfx } from "../fx/Vfx";
+import { Parallax } from "../render/Parallax";
+import { AssetKeys } from "../assets/manifest";
+import { fitSprite } from "../render/sprites";
 import { settings } from "../state/settings";
 import { Enemy } from "../entities/Enemy";
 import { Turret } from "../entities/Turret";
@@ -99,6 +102,7 @@ export class GameScene extends Phaser.Scene {
   private hoverRect!: Phaser.GameObjects.Rectangle;
   private hud!: HudScene;
   private vfx!: Vfx;
+  private bg?: Parallax;
   private paused = false;
 
   constructor() {
@@ -173,49 +177,55 @@ export class GameScene extends Phaser.Scene {
   // -------------------------------------------------------------------------
 
   private drawStaticBoard(): void {
-    this.add.rectangle(0, 0, GAME_WIDTH, TOP_HUD_HEIGHT, 0x0d141f).setOrigin(0, 0).setDepth(1);
+    this.drawBackground();
+
+    // Top HUD band + side panel backing (9-slice framing layered on in HudScene).
+    this.add.rectangle(0, 0, GAME_WIDTH, TOP_HUD_HEIGHT, 0x0d141f, 0.92).setOrigin(0, 0).setDepth(1);
     this.add
-      .rectangle(PLAYFIELD_WIDTH, 0, GAME_WIDTH - PLAYFIELD_WIDTH, GAME_HEIGHT, 0x0d141f)
+      .rectangle(PLAYFIELD_WIDTH, 0, GAME_WIDTH - PLAYFIELD_WIDTH, GAME_HEIGHT, 0x0d141f, 0.92)
       .setOrigin(0, 0)
       .setDepth(1);
 
+    // Tileset-sprite map (code-generated from the StrongholdDef level format).
+    const tilesetKey = AssetKeys.tileset(this.def.id);
     const { cols, rows, tileSize } = this.grid;
     for (let row = 0; row < rows; row++) {
       for (let col = 0; col < cols; col++) {
         const type = this.tileMap[row][col];
         const c = tileCenter(this.grid, { col, row });
-        const { fill, edge } = this.tileStyle(type);
-        this.add.rectangle(c.x, c.y, tileSize - 2, tileSize - 2, fill).setStrokeStyle(1, edge, 0.7).setDepth(2);
+        const tile = this.add.image(c.x, c.y, tilesetKey, this.tileFrame(type)).setDepth(2);
+        fitSprite(tile, tileSize);
       }
     }
 
+    // Spawn + core markers (kept as clear gameplay indicators on top of tiles).
     for (const path of this.def.paths) {
-      const wp = pathToWaypoints(this.grid, path);
-      const g = this.add.graphics().setDepth(3);
-      g.lineStyle(7, 0x6a5238, 0.45);
-      g.beginPath();
-      g.moveTo(wp[0].x, wp[0].y);
-      for (let i = 1; i < wp.length; i++) g.lineTo(wp[i].x, wp[i].y);
-      g.strokePath();
-      const s = wp[0];
-      this.add.circle(s.x, s.y, 12, 0xb03048).setDepth(4);
+      const s = tileCenter(this.grid, path[0]);
+      this.add.circle(s.x, s.y, 12, 0xb03048).setDepth(4).setStrokeStyle(2, 0xffd6de, 0.8);
     }
-
     const core = tileCenter(this.grid, this.def.coreCoord);
     this.add.circle(core.x, core.y, 15, 0x39a08a).setDepth(4);
     this.add.text(core.x, core.y, "◆", { fontSize: "20px", color: "#d6fff2" }).setOrigin(0.5).setDepth(5);
   }
 
-  private tileStyle(type: TileType): { fill: number; edge: number } {
+  private drawBackground(): void {
+    this.bg = new Parallax(this, 0, TOP_HUD_HEIGHT, PLAYFIELD_WIDTH, PLAYFIELD_HEIGHT, [
+      { key: AssetKeys.bgSky(this.def.id), speedX: 4, alpha: 1 },
+      { key: AssetKeys.bgMid(this.def.id), speedX: 11, alpha: 0.9 },
+    ], -10);
+  }
+
+  /** Map a tile type to its tileset frame index (see PLACEHOLDERS.md tileset notes). */
+  private tileFrame(type: TileType): number {
     switch (type) {
       case TileType.Path:
-        return { fill: TileColors.path, edge: TileColors.pathEdge };
       case TileType.Spawn:
-        return { fill: TileColors.spawn, edge: TileColors.pathEdge };
       case TileType.Core:
-        return { fill: TileColors.core, edge: 0x39a08a };
+        return 1; // path
+      case TileType.Blocked:
+        return 5; // blocked
       default:
-        return { fill: TileColors.buildable, edge: TileColors.buildableEdge };
+        return 3; // buildable
     }
   }
 
@@ -565,7 +575,11 @@ export class GameScene extends Phaser.Scene {
     const color = CHARGE_META[charge].color;
     audio.playShot(charge);
     this.vfx.muzzleFlash(from.x, from.y, color);
-    this.vfx.bolt(from, to, color, () => audio.playImpact(charge));
+    this.vfx.bolt(from, to, color, {
+      texture: AssetKeys.projectile(charge),
+      trail: "projectile.trail",
+      onArrive: () => audio.playImpact(charge),
+    });
   }
 
   private hitEnemy(enemy: Enemy, damage: number, opts: DamageOptions = {}): void {
@@ -586,7 +600,7 @@ export class GameScene extends Phaser.Scene {
     const res = takeDamage(enemy.state, dmg, now, opts.ignoreShield);
     this.run.waveStats.damageDealt += res.hpDamage + res.shieldAbsorbed;
     enemy.redrawHpBar();
-    enemy.hitFlash(this);
+    enemy.hitFlash(now);
 
     // Floating damage number for primary hits.
     const dealt = res.hpDamage + res.shieldAbsorbed;
@@ -663,7 +677,7 @@ export class GameScene extends Phaser.Scene {
     audio.playDeath();
     this.floatingText(enemy.x, enemy.y - 10, `+${reward.cogs}`, "#e6c14f");
     this.deathFx(enemy.x, enemy.y, enemy.def.color);
-    enemy.destroy();
+    enemy.die();
   }
 
   private computeReward(enemy: Enemy) {
@@ -827,6 +841,8 @@ export class GameScene extends Phaser.Scene {
   // -------------------------------------------------------------------------
 
   override update(_time: number, delta: number): void {
+    // Background drifts continuously, even while paused / between phases.
+    this.bg?.update(delta);
     if (this.paused || this.run.phase === "won" || this.run.phase === "lost" || this.run.phase === "summary") {
       return;
     }

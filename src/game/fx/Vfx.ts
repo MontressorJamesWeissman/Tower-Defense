@@ -7,6 +7,7 @@
 import Phaser from "phaser";
 import { Point } from "../logic/grid";
 import { settings } from "../state/settings";
+import { fitSprite } from "../render/sprites";
 import { FX_GLOW, FX_RING, FX_RING_BASE } from "./textures";
 
 const FX_DEPTH = 64;
@@ -64,11 +65,23 @@ export class Vfx {
     this.scene.tweens.add({ targets: p, scale: 0.2, alpha: 0, duration: 130, ease: "Quad.easeOut", onComplete: () => this.release(p) });
   }
 
-  /** Cosmetic bolt that travels from→to, then fires onArrive (e.g. impact sound). */
-  bolt(from: Point, to: Point, color: number, onArrive?: () => void): void {
+  /**
+   * Cosmetic bolt that travels from→to using a textured projectile (falling
+   * back to the glow texture), then fires onArrive (e.g. impact sound).
+   */
+  bolt(
+    from: Point,
+    to: Point,
+    color: number,
+    opts: { texture?: string; trail?: string; onArrive?: () => void } = {},
+  ): void {
+    const texture = opts.texture && this.scene.textures.exists(opts.texture) ? opts.texture : FX_GLOW;
+    const trail = opts.trail && this.scene.textures.exists(opts.trail) ? opts.trail : FX_GLOW;
+    const textured = texture !== FX_GLOW;
     const dist = Phaser.Math.Distance.Between(from.x, from.y, to.x, to.y);
     const duration = Phaser.Math.Clamp(dist / 1.4, 70, 240); // ~1400 px/s
-    const orb = this.acquire(FX_GLOW).setPosition(from.x, from.y).setTint(color).setScale(0.55).setAlpha(1).setDepth(FX_DEPTH + 1);
+    const orb = this.acquire(texture).setPosition(from.x, from.y).setTint(color).setAlpha(1).setDepth(FX_DEPTH + 1);
+    orb.setScale(textured ? 1 : 0.55);
     orb.setRotation(Phaser.Math.Angle.Between(from.x, from.y, to.x, to.y));
 
     let lastTrail = 0;
@@ -83,26 +96,44 @@ export class Vfx {
         const e = tw.elapsed;
         if (e - lastTrail >= 16) {
           lastTrail = e;
-          this.trailDot(orb.x, orb.y, color);
+          this.trailDot(orb.x, orb.y, color, trail);
         }
       },
       onComplete: () => {
         this.release(orb);
         this.impact(to.x, to.y, color);
-        onArrive?.();
+        opts.onArrive?.();
       },
     });
   }
 
-  private trailDot(x: number, y: number, color: number): void {
-    const d = this.acquire(FX_GLOW).setPosition(x, y).setTint(color).setScale(0.3).setAlpha(0.5).setDepth(FX_DEPTH);
+  private trailDot(x: number, y: number, color: number, texture: string): void {
+    const d = this.acquire(texture).setPosition(x, y).setTint(color).setScale(0.3).setAlpha(0.5).setDepth(FX_DEPTH);
     this.scene.tweens.add({ targets: d, scale: 0.05, alpha: 0, duration: 200, onComplete: () => this.release(d) });
   }
 
   impact(x: number, y: number, color: number): void {
     this.burst(x, y, color, 7, 22, 0.45, 300);
-    const flash = this.acquire(FX_GLOW).setPosition(x, y).setTint(color).setScale(0.8).setAlpha(0.9).setDepth(FX_DEPTH);
-    this.scene.tweens.add({ targets: flash, scale: 0.1, alpha: 0, duration: 140, onComplete: () => this.release(flash) });
+    this.playEffect("effect.impact", "play", x, y, color, 56);
+  }
+
+  /**
+   * Play a one-shot effect-atlas sprite (impact/reaction), tinted, then
+   * despawn. Falls back to a quick scale/fade if no animation is registered.
+   */
+  private playEffect(key: string, anim: string, x: number, y: number, color: number, size: number): void {
+    if (!this.scene.textures.exists(key)) return;
+    const spr = this.scene.add.sprite(x, y, key).setTint(color).setDepth(FX_DEPTH + 2).setBlendMode(Phaser.BlendModes.ADD);
+    fitSprite(spr, size);
+    const animK = `${key}:${anim}`;
+    if (this.scene.anims.exists(animK)) {
+      spr.play(animK);
+      spr.once(Phaser.Animations.Events.ANIMATION_COMPLETE, () => spr.destroy());
+      this.scene.time.delayedCall(600, () => spr.destroy()); // safety
+    } else {
+      const target = spr.scale * 1.5;
+      this.scene.tweens.add({ targets: spr, scale: target, alpha: 0, duration: 280, onComplete: () => spr.destroy() });
+    }
   }
 
   death(x: number, y: number, color: number): void {
@@ -127,8 +158,9 @@ export class Vfx {
     this.shockwave(x, y, color, 48, 360, 0.7);
   }
 
-  /** The big reaction moment: dual-color burst + expanding ring. */
+  /** The big reaction moment: effect-atlas burst + dual-color particles + ring. */
   reactionBurst(x: number, y: number, color: number, radius: number): void {
+    this.playEffect("effect.reaction", "play", x, y, color, Math.max(72, radius * 2));
     this.shockwave(x, y, 0xffffff, Math.max(40, radius), 300, 0.9);
     this.shockwave(x, y, color, Math.max(48, radius * 1.2), 380, 0.8);
     this.burst(x, y, color, 18, radius * 0.7, 0.7, 480);

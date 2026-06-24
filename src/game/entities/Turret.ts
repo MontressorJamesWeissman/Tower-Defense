@@ -11,6 +11,7 @@ import {
 } from "../logic/devices";
 import { Charge, CHARGE_META } from "../logic/elements";
 import { applyResistShred } from "../logic/combat";
+import { playAnim, fitSprite } from "../render/sprites";
 import type { CombatContext } from "./types";
 import type { Enemy } from "./Enemy";
 
@@ -27,7 +28,9 @@ export class Turret {
   private readonly scene: Phaser.Scene;
   private readonly container: Phaser.GameObjects.Container;
   private readonly rangeCircle: Phaser.GameObjects.Arc;
-  private readonly barrel: Phaser.GameObjects.Rectangle;
+  /** Rotating head: emitter overlay + firing-animation overlay. */
+  private readonly head: Phaser.GameObjects.Container;
+  private readonly fireSprite: Phaser.GameObjects.Sprite;
   private lastFireAtMs = -99999;
 
   constructor(scene: Phaser.Scene, grid: GridConfig, coord: GridCoord, charge: Charge) {
@@ -37,6 +40,7 @@ export class Turret {
     this.center = tileCenter(grid, coord);
     this.stats = computeTurretStats(this.upgrades);
     const meta = CHARGE_META[charge];
+    const size = grid.tileSize;
 
     this.rangeCircle = scene.add
       .circle(this.center.x, this.center.y, this.stats.range, meta.color, 0.06)
@@ -44,10 +48,15 @@ export class Turret {
       .setVisible(false)
       .setDepth(8);
 
-    const base = scene.add.rectangle(0, 0, grid.tileSize - 10, grid.tileSize - 10, 0x202c3e).setStrokeStyle(2, meta.color, 0.9);
-    const ring = scene.add.circle(0, 0, 9, meta.color);
-    this.barrel = scene.add.rectangle(0, -2, 5, 16, 0xcdd6e0).setOrigin(0.5, 1);
-    this.container = scene.add.container(this.center.x, this.center.y, [base, ring, this.barrel]).setDepth(12);
+    // Layered sprites: neutral base + Charge-tinted emitter + firing overlay.
+    const base = scene.add.sprite(0, 0, "turret.base");
+    fitSprite(base, size);
+    const emitter = scene.add.sprite(0, 0, "turret.emitter").setTint(meta.color);
+    fitSprite(emitter, size);
+    this.fireSprite = scene.add.sprite(0, 0, "turret.fire").setTint(meta.color).setVisible(false);
+    fitSprite(this.fireSprite, size);
+    this.head = scene.add.container(0, 0, [emitter, this.fireSprite]);
+    this.container = scene.add.container(this.center.x, this.center.y, [base, this.head]).setDepth(12);
   }
 
   showRange(v: boolean): void {
@@ -91,9 +100,15 @@ export class Turret {
   }
 
   private fire(ctx: CombatContext, target: Enemy, nowMs: number): void {
-    // Aim the barrel and give it a quick recoil pop (follow-through).
+    // Aim the head at the target, play the firing overlay, recoil pop.
     const tp = target.pos();
-    this.barrel.setRotation(Phaser.Math.Angle.Between(this.center.x, this.center.y, tp.x, tp.y) + Math.PI / 2);
+    this.head.setRotation(Phaser.Math.Angle.Between(this.center.x, this.center.y, tp.x, tp.y) + Math.PI / 2);
+    this.fireSprite.setVisible(true);
+    if (!playAnim(this.fireSprite, "turret.fire", "fire")) {
+      this.scene.tweens.add({ targets: this.fireSprite, alpha: { from: 1, to: 0 }, duration: 120, onComplete: () => this.fireSprite.setAlpha(1).setVisible(false) });
+    } else {
+      this.fireSprite.once(Phaser.Animations.Events.ANIMATION_COMPLETE, () => this.fireSprite.setVisible(false));
+    }
     this.recoil();
 
     if (this.stats.resistShredMs > 0) {
@@ -122,8 +137,9 @@ export class Turret {
 
   private recoil(): void {
     this.scene.tweens.add({
-      targets: this.barrel,
-      scaleY: 1.35,
+      targets: this.head,
+      scaleX: 0.82,
+      scaleY: 0.82,
       duration: 60,
       yoyo: true,
       ease: "Quad.easeOut",

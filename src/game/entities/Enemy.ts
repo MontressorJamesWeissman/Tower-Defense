@@ -3,6 +3,8 @@ import { EnemyDef, EnemyKind, DETONATION_CATALYST_MULT, MENDER_HEAL_INTERVAL_MS 
 import { EnemyCombatState, isFrozen } from "../logic/combat";
 import { Point } from "../logic/grid";
 import { CHARGE_META, Charge } from "../logic/elements";
+import { AssetKeys } from "../assets/manifest";
+import { playAnim, fitSprite } from "../render/sprites";
 import type { CombatContext } from "./types";
 
 export interface ActiveDot {
@@ -26,10 +28,12 @@ export class Enemy {
   readonly state: EnemyCombatState;
   readonly container: Phaser.GameObjects.Container;
 
-  private readonly body: Phaser.GameObjects.Arc;
+  private readonly body: Phaser.GameObjects.Sprite;
   private readonly chargeRing: Phaser.GameObjects.Arc;
   private readonly hpBar: Phaser.GameObjects.Graphics;
   private readonly bossTag?: Phaser.GameObjects.Text;
+  private flashUntilMs = 0;
+  private destroyed = false;
 
   private readonly waypoints: readonly Point[];
   travelled = 0;
@@ -74,8 +78,11 @@ export class Enemy {
     this.nextReshieldAtMs = nowMs + def.reshieldIntervalMs;
 
     const start = waypoints[0];
-    this.body = scene.add.circle(0, 0, def.radius, def.color);
-    this.body.setStrokeStyle(def.flying ? 2 : 1, def.flying ? 0xbfe9ff : 0x05080d, 0.9);
+    const enemyKey = AssetKeys.enemy(def.kind);
+    this.body = scene.add.sprite(0, 0, enemyKey);
+    fitSprite(this.body, def.radius * 2.3);
+    playAnim(this.body, enemyKey, "walk");
+    if (def.flying) this.body.setY(-6); // hover offset
     this.chargeRing = scene.add.circle(0, 0, def.radius + 4).setStrokeStyle(3, 0xffffff, 0).setVisible(false);
     this.hpBar = scene.add.graphics();
 
@@ -255,8 +262,14 @@ export class Enemy {
     } else {
       this.chargeRing.setVisible(false);
     }
-    // Freeze tint.
-    this.body.setFillStyle(this.isFrozen(nowMs) ? 0x9fdcff : this.def.color);
+    // Tint priority: white hit-flash > freeze-blue > normal.
+    if (nowMs < this.flashUntilMs) {
+      this.body.setTintFill(0xffffff);
+    } else if (this.isFrozen(nowMs)) {
+      this.body.setTint(0x9fdcff);
+    } else {
+      this.body.clearTint();
+    }
   }
 
   redrawHpBar(): void {
@@ -276,14 +289,41 @@ export class Enemy {
     }
   }
 
-  hitFlash(scene: Phaser.Scene): void {
-    this.body.setFillStyle(0xffffff);
-    scene.time.delayedCall(60, () => {
-      if (this.alive) this.body.setFillStyle(this.def.color);
-    });
+  /** Brief white tint flash on hit (~80ms), driven by updateVisuals. */
+  hitFlash(nowMs: number): void {
+    this.flashUntilMs = nowMs + 80;
+    this.body.setTintFill(0xffffff);
+  }
+
+  /** Death: play death anim (or scale/fade) then despawn. */
+  die(): void {
+    if (this.destroyed) return;
+    this.alive = false;
+    this.hpBar.setVisible(false);
+    this.chargeRing.setVisible(false);
+    this.bossTag?.setVisible(false);
+    this.body.clearTint();
+    const scene = this.container.scene;
+    const enemyKey = AssetKeys.enemy(this.def.kind);
+    const played = playAnim(this.body, enemyKey, "death");
+    if (played) {
+      this.body.once(Phaser.Animations.Events.ANIMATION_COMPLETE, () => this.destroy());
+      scene.time.delayedCall(700, () => this.destroy()); // safety net
+    } else {
+      scene.tweens.add({
+        targets: this.container,
+        alpha: 0,
+        scale: 0.6,
+        duration: 220,
+        ease: "Back.easeIn",
+        onComplete: () => this.destroy(),
+      });
+    }
   }
 
   destroy(): void {
+    if (this.destroyed) return;
+    this.destroyed = true;
     this.alive = false;
     this.container.destroy();
   }

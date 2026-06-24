@@ -10,6 +10,7 @@ import {
   MAX_TRAP_UPGRADE_SLOTS,
 } from "../logic/devices";
 import { Charge, CHARGE_META } from "../logic/elements";
+import { playAnim, fitSprite } from "../render/sprites";
 import type { CombatContext } from "./types";
 
 const TRIGGER_COOLDOWN_MS = 350;
@@ -24,20 +25,24 @@ export class Trap {
   readonly investedCosts: number[] = [];
   stats: TrapStats;
 
+  private readonly scene: Phaser.Scene;
   private readonly triggerRadius: number;
   private readonly container: Phaser.GameObjects.Container;
   private readonly rangeCircle: Phaser.GameObjects.Arc;
+  private readonly activeSprite: Phaser.GameObjects.Sprite;
   private lastTriggerAtMs = -99999;
   private lastMineAtMs = 0;
   private lastPulseAtMs = 0;
 
   constructor(scene: Phaser.Scene, grid: GridConfig, coord: GridCoord, charge: Charge) {
+    this.scene = scene;
     this.coord = coord;
     this.charge = charge;
     this.center = tileCenter(grid, coord);
     this.triggerRadius = grid.tileSize * 0.55;
     this.stats = computeTrapStats(this.upgrades);
     const meta = CHARGE_META[charge];
+    const size = grid.tileSize;
 
     this.rangeCircle = scene.add
       .circle(this.center.x, this.center.y, this.stats.radius, meta.color, 0.05)
@@ -45,9 +50,24 @@ export class Trap {
       .setVisible(false)
       .setDepth(8);
 
-    const plate = scene.add.rectangle(0, 0, grid.tileSize - 12, grid.tileSize - 12, 0x2a2018).setStrokeStyle(2, meta.color, 0.9);
-    const rune = scene.add.star(0, 0, 6, 4, 10, meta.color, 0.85);
-    this.container = scene.add.container(this.center.x, this.center.y, [plate, rune]).setDepth(10);
+    // Layered sprites: plate base + Charge-tinted rune + trigger pulse overlay.
+    const plate = scene.add.sprite(0, 0, "trap.base");
+    fitSprite(plate, size);
+    const rune = scene.add.sprite(0, 0, "trap.rune").setTint(meta.color);
+    fitSprite(rune, size);
+    this.activeSprite = scene.add.sprite(0, 0, "trap.active").setTint(meta.color).setVisible(false);
+    fitSprite(this.activeSprite, size * 1.4);
+    this.container = scene.add.container(this.center.x, this.center.y, [this.activeSprite, plate, rune]).setDepth(10);
+  }
+
+  /** Flash the trap's trigger/pulse overlay (one cycle). */
+  private playPulse(): void {
+    this.activeSprite.setVisible(true).setAlpha(0.9);
+    playAnim(this.activeSprite, "trap.active", "pulse");
+    this.scene.time.delayedCall(260, () => {
+      this.activeSprite.anims?.stop();
+      this.activeSprite.setVisible(false);
+    });
   }
 
   showRange(v: boolean): void {
@@ -103,6 +123,7 @@ export class Trap {
       .filter((e) => !e.def.flying);
     if (here.length === 0) return;
     this.lastTriggerAtMs = nowMs;
+    this.playPulse();
     for (const e of here) {
       ctx.hitEnemy(e, this.stats.damage, { charge: this.charge, splash: true });
     }
