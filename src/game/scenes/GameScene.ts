@@ -40,6 +40,7 @@ import { Vfx } from "../fx/Vfx";
 import { Parallax } from "../render/Parallax";
 import { AssetKeys } from "../assets/manifest";
 import { fitSprite } from "../render/sprites";
+import { FONTS } from "../render/fonts";
 import { settings } from "../state/settings";
 import { Enemy } from "../entities/Enemy";
 import { Turret } from "../entities/Turret";
@@ -123,6 +124,7 @@ export class GameScene extends Phaser.Scene {
 
     this.drawStaticBoard();
     this.vfx = new Vfx(this);
+    this.spawnAmbientMotes();
     audio.startMusic("setup");
 
     this.hoverRect = this.add
@@ -213,6 +215,35 @@ export class GameScene extends Phaser.Scene {
       { key: AssetKeys.bgSky(this.def.id), speedX: 4, alpha: 1 },
       { key: AssetKeys.bgMid(this.def.id), speedX: 11, alpha: 0.9 },
     ], -10);
+  }
+
+  /** Subtle drifting motes over the playfield for ambient depth. */
+  private spawnAmbientMotes(): void {
+    if (settings.reduceVfx) return;
+    const count = 14;
+    for (let i = 0; i < count; i++) {
+      const x = Math.random() * PLAYFIELD_WIDTH;
+      const y = TOP_HUD_HEIGHT + Math.random() * PLAYFIELD_HEIGHT;
+      const m = this.add
+        .image(x, y, "effect.mote")
+        .setBlendMode(Phaser.BlendModes.ADD)
+        .setDepth(3)
+        .setAlpha(0.08 + Math.random() * 0.18)
+        .setScale(0.25 + Math.random() * 0.5)
+        .setTint(0x9fd0ff);
+      this.tweens.add({
+        targets: m,
+        y: y - (30 + Math.random() * 60),
+        x: x + (Math.random() * 30 - 15),
+        alpha: 0,
+        duration: 5000 + Math.random() * 5000,
+        repeat: -1,
+        repeatDelay: Math.random() * 1500,
+        onRepeat: () => {
+          m.setPosition(Math.random() * PLAYFIELD_WIDTH, TOP_HUD_HEIGHT + PLAYFIELD_HEIGHT).setAlpha(0.08 + Math.random() * 0.18);
+        },
+      });
+    }
   }
 
   /** Map a tile type to its tileset frame index (see PLACEHOLDERS.md tileset notes). */
@@ -777,8 +808,8 @@ export class GameScene extends Phaser.Scene {
     const css = `#${color.toString(16).padStart(6, "0")}`;
     const t = this.add
       .text(x, y - 22, `${name}!`, {
-        fontFamily: "Orbitron, sans-serif",
-        fontSize: "16px",
+        fontFamily: FONTS.display,
+        fontSize: "18px",
         color: css,
         fontStyle: "bold",
         stroke: "#05080d",

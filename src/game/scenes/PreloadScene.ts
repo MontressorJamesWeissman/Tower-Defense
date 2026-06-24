@@ -2,6 +2,8 @@ import Phaser from "phaser";
 import { SceneKeys, GAME_WIDTH, GAME_HEIGHT } from "../constants";
 import { ASSETS, animKey, entriesOfType, SheetAsset } from "../assets/manifest";
 import { makeImagePlaceholder, makeSheetPlaceholder } from "../assets/placeholders";
+import { FONT_LOAD_SPECS } from "../render/fonts";
+import { audio } from "../audio/AudioManager";
 
 /**
  * PreloadScene — manifest-driven asset loader.
@@ -38,8 +40,10 @@ export class PreloadScene extends Phaser.Scene {
         this.load.image(key, a.path);
       } else if (a.type === "spritesheet") {
         this.load.spritesheet(key, a.path, { frameWidth: a.frameWidth, frameHeight: a.frameHeight });
+      } else if (a.type === "audio") {
+        // Optional: real audio files. If absent (404), AudioManager uses synth.
+        this.load.audio(key, a.path);
       }
-      // audio: handled by the synth engine for now (see AudioManager).
     }
   }
 
@@ -54,7 +58,38 @@ export class PreloadScene extends Phaser.Scene {
     }
 
     this.registerAnims();
-    this.scene.start(SceneKeys.MainMenu);
+    this.registerAudioFiles();
+    this.waitForFontsThenStart();
+  }
+
+  /** Tell the AudioManager which audio files actually loaded (URL per key). */
+  private registerAudioFiles(): void {
+    const base = import.meta.env.BASE_URL;
+    const map: Record<string, string> = {};
+    for (const [key, a] of entriesOfType("audio")) {
+      if (this.cache.audio.exists(key)) map[key] = base + a.path;
+    }
+    audio.setAudioFiles(map);
+  }
+
+  /** Give webfonts a moment to load so headers render in the display font. */
+  private waitForFontsThenStart(): void {
+    let started = false;
+    const go = () => {
+      if (started) return;
+      started = true;
+      this.scene.start(SceneKeys.MainMenu);
+    };
+    // Hard cap so a slow/offline font fetch never blocks the game.
+    this.time.delayedCall(1500, go);
+    const fontSet = (document as Document & { fonts?: FontFaceSet }).fonts;
+    if (fontSet?.load) {
+      Promise.all(FONT_LOAD_SPECS.map((s) => fontSet.load(s).catch(() => undefined)))
+        .then(go)
+        .catch(go);
+    } else {
+      go();
+    }
   }
 
   /** Build all spritesheet animations declared in the manifest. */

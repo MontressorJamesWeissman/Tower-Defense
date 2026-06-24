@@ -10,6 +10,10 @@ import {
   remainingCooldownMs,
 } from "../logic/abilities";
 import { audio } from "../audio/AudioManager";
+import { FONTS } from "../render/fonts";
+import { makePanel } from "../render/NineSlice";
+import { openSettings } from "../ui/SettingsOverlay";
+import { AssetKeys } from "../assets/manifest";
 import type { GameScene, BuildSelection } from "./GameScene";
 import type { WaveStats } from "../state/RunState";
 
@@ -41,6 +45,8 @@ export class HudScene extends Phaser.Scene {
   private abilityButtons: AbilityButton[] = [];
 
   private toastText!: Phaser.GameObjects.Text;
+  private displayedCogs = 0;
+  private lastPhaseLabel = "";
   private toastUntil = 0;
   private overlay?: Phaser.GameObjects.Container;
   private targetingKind: AbilityKind | null = null;
@@ -77,9 +83,14 @@ export class HudScene extends Phaser.Scene {
   // -------------------------------------------------------------------------
 
   private buildTopBar(): void {
+    // Painted 9-slice frames behind the top bar and side panel.
+    makePanel(this, "ui.hud", 2, 2, PLAYFIELD_WIDTH - 4, TOP_HUD_HEIGHT - 4).setDepth(90).setAlpha(0.95);
+    makePanel(this, "ui.panel", PLAYFIELD_WIDTH + 2, 2, GAME_WIDTH - PLAYFIELD_WIDTH - 4, GAME_HEIGHT - 4).setDepth(90).setAlpha(0.95);
+
     this.add
       .text(12, TOP_HUD_HEIGHT / 2, this.gameScene.run.stronghold.name, {
-        fontSize: "16px",
+        fontFamily: FONTS.display,
+        fontSize: "18px",
         color: "#4fd1c5",
         fontStyle: "bold",
       })
@@ -87,36 +98,39 @@ export class HudScene extends Phaser.Scene {
       .setDepth(100);
 
     this.phaseText = this.add
-      .text(PLAYFIELD_WIDTH / 2, 14, "", { fontSize: "16px", color: "#e6c14f", fontStyle: "bold" })
+      .text(PLAYFIELD_WIDTH / 2, 14, "", { fontFamily: FONTS.display, fontSize: "17px", color: "#e6c14f", fontStyle: "bold" })
       .setOrigin(0.5, 0.5)
       .setDepth(100);
     this.waveText = this.add
-      .text(PLAYFIELD_WIDTH / 2, 38, "", { fontSize: "12px", color: "#8aa0b8" })
+      .text(PLAYFIELD_WIDTH / 2, 38, "", { fontFamily: FONTS.body, fontSize: "13px", color: "#8aa0b8" })
       .setOrigin(0.5, 0.5)
       .setDepth(100);
 
-    // Right side: cogs, integrity, surge.
+    // Right side: cogs, integrity, surge — each with a painted icon.
+    this.add.image(PANEL_X + 8, 17, "icon.cog").setDisplaySize(16, 16).setDepth(101);
     this.cogText = this.add
-      .text(PANEL_X, 8, "", { fontSize: "18px", color: "#e6c14f", fontStyle: "bold" })
+      .text(PANEL_X + 20, 8, "", { fontFamily: FONTS.body, fontSize: "19px", color: "#e6c14f", fontStyle: "bold" })
       .setDepth(100);
 
+    this.add.image(PANEL_X + 62, 32, "icon.integrity").setDisplaySize(14, 14).setDepth(101);
     this.integrityBar = this.add.graphics().setDepth(100);
     this.integrityText = this.add
-      .text(PANEL_X + 70, 32, "", { fontSize: "11px", color: "#e6edf3" })
+      .text(PANEL_X + 70, 32, "", { fontFamily: FONTS.body, fontSize: "12px", color: "#e6edf3" })
       .setOrigin(0, 0.5)
       .setDepth(101);
 
+    this.add.image(PANEL_X + 138, 13, "icon.surge").setDisplaySize(12, 12).setDepth(101);
     this.surgeBar = this.add.graphics().setDepth(100);
-    this.add.text(PANEL_X + 130, 8, "Surge", { fontSize: "10px", color: "#b070ff" }).setDepth(100);
+    this.add.text(PANEL_X + 148, 8, "Surge", { fontFamily: FONTS.body, fontSize: "11px", color: "#b070ff" }).setDepth(100);
   }
 
   private buildPalette(): void {
     let y = TOP_HUD_HEIGHT + 12;
-    this.add.text(PANEL_X, y, "BUILD", { fontSize: "12px", color: "#8aa0b8", fontStyle: "bold" }).setDepth(100);
+    this.add.text(PANEL_X, y, "BUILD", { fontFamily: FONTS.display, fontSize: "13px", color: "#cda86a", fontStyle: "bold" }).setDepth(100);
     y += 18;
 
     const makeRow = (label: string, builder: (charge: (typeof ALL_CHARGES)[number]) => BuildSelection) => {
-      this.add.text(PANEL_X, y, label, { fontSize: "11px", color: "#6f8298" }).setDepth(100);
+      this.add.text(PANEL_X, y, label, { fontFamily: FONTS.body, fontSize: "12px", color: "#8aa0b8" }).setDepth(100);
       y += 16;
       const size = 30;
       const gap = 6;
@@ -125,14 +139,15 @@ export class HudScene extends Phaser.Scene {
         const x = PANEL_X + i * (size + gap) + size / 2;
         const cy = y + size / 2;
         const bg = this.add
-          .rectangle(x, cy, size, size, meta.color, 0.85)
-          .setStrokeStyle(2, 0x0a0e14, 1)
+          .rectangle(x, cy, size, size, meta.color, 0.22)
+          .setStrokeStyle(2, meta.color, 0.9)
           .setInteractive({ useHandCursor: true })
           .setDepth(100);
         const sel = builder(charge);
         bg.on("pointerdown", () => this.onPaletteClick(sel, bg));
         bg.on("pointerover", () => audio.playUI("hover"));
-        this.add.text(x, cy, charge[0], { fontSize: "13px", color: "#0a0e14", fontStyle: "bold" }).setOrigin(0.5).setDepth(101);
+        // Painted charge icon on top of the swatch.
+        this.add.image(x, cy, AssetKeys.chargeIcon(charge)).setDisplaySize(size - 6, size - 6).setDepth(101);
         this.paletteButtons.push({ sel, bg });
       });
       y += size + 10;
@@ -141,7 +156,7 @@ export class HudScene extends Phaser.Scene {
     makeRow("Turret (charge)", (charge) => ({ kind: "turret", charge }));
     makeRow("Trap (charge, on path)", (charge) => ({ kind: "trap", charge }));
 
-    this.add.text(PANEL_X, y, "Collector", { fontSize: "11px", color: "#6f8298" }).setDepth(100);
+    this.add.text(PANEL_X, y, "Collector", { fontFamily: FONTS.body, fontSize: "12px", color: "#8aa0b8" }).setDepth(100);
     y += 16;
     const modes: { mode: CollectorMode; label: string; color: number }[] = [
       { mode: CollectorMode.Cog, label: "¢ Cog", color: 0xe6c14f },
@@ -178,21 +193,21 @@ export class HudScene extends Phaser.Scene {
     const total = ALL_ABILITIES.length * (size + gap) - gap;
     const startX = PANEL_X + (PANEL_W - total) / 2;
     const y = GAME_HEIGHT - 46;
-    this.add.text(PANEL_X, y - 16, "SUPPORT ABILITIES (cooldowns persist)", { fontSize: "10px", color: "#6f8298" }).setDepth(100);
+    this.add.text(PANEL_X, y - 16, "SUPPORT ABILITIES (cooldowns persist)", { fontFamily: FONTS.body, fontSize: "10px", color: "#6f8298" }).setDepth(100);
 
     ALL_ABILITIES.forEach((kind, i) => {
       const def = ABILITIES[kind];
       const meta = CHARGE_META[def.charge];
       const x = startX + i * (size + gap);
       const bg = this.add
-        .rectangle(0, 0, size, size, meta.color, 0.85)
-        .setStrokeStyle(2, 0x0a0e14, 1)
+        .rectangle(0, 0, size, size, meta.color, 0.22)
+        .setStrokeStyle(2, meta.color, 0.9)
         .setInteractive({ useHandCursor: true });
-      const label = this.add.text(0, -3, def.charge[0], { fontSize: "14px", color: "#0a0e14", fontStyle: "bold" }).setOrigin(0.5);
-      const hot = this.add.text(0, 10, def.hotkey, { fontSize: "9px", color: "#0a0e14" }).setOrigin(0.5);
+      const icon = this.add.image(0, -2, AssetKeys.abilityIcon(kind)).setDisplaySize(size - 10, size - 10);
+      const hot = this.add.text(size / 2 - 4, size / 2 - 4, def.hotkey, { fontFamily: FONTS.body, fontSize: "9px", color: "#ffffff" }).setOrigin(1, 1);
       const cdOverlay = this.add.rectangle(0, size / 2, size, 0, 0x0a0e14, 0.7).setOrigin(0.5, 1);
-      const cdText = this.add.text(0, 0, "", { fontSize: "11px", color: "#ffffff", fontStyle: "bold" }).setOrigin(0.5);
-      const container = this.add.container(x + size / 2, y, [bg, label, hot, cdOverlay, cdText]).setDepth(100);
+      const cdText = this.add.text(0, 0, "", { fontFamily: FONTS.body, fontSize: "12px", color: "#ffffff", fontStyle: "bold" }).setOrigin(0.5);
+      const container = this.add.container(x + size / 2, y, [bg, icon, hot, cdOverlay, cdText]).setDepth(100);
       bg.on("pointerdown", () => {
         audio.playUI("click");
         this.gameScene.requestAbility(kind);
@@ -232,20 +247,20 @@ export class HudScene extends Phaser.Scene {
     color: number,
     onClick: () => void,
   ): Phaser.GameObjects.Container {
-    const bg = this.add.rectangle(0, 0, w, h, color, 0.9).setOrigin(0, 0).setStrokeStyle(2, 0x0a0e14, 1).setInteractive({ useHandCursor: true });
-    const txt = this.add.text(w / 2, h / 2, label, { fontSize: "13px", color: "#ffffff", fontStyle: "bold" }).setOrigin(0.5);
+    const bg = makePanel(this, "ui.button", 0, 0, w, h).setTint(color).setAlpha(0.92).setInteractive({ useHandCursor: true });
+    const txt = this.add.text(w / 2, h / 2, label, { fontFamily: FONTS.body, fontSize: "14px", color: "#ffffff", fontStyle: "bold" }).setOrigin(0.5);
     const c = this.add.container(x, y, [bg, txt]);
     bg.on("pointerdown", () => {
       audio.playUI("click");
       onClick();
     });
     bg.on("pointerover", () => {
-      bg.setFillStyle(color, 1);
+      bg.setAlpha(1);
       audio.playUI("hover");
       this.tweens.add({ targets: c, scaleX: 1.04, scaleY: 1.04, duration: 90, ease: "Quad.easeOut" });
     });
     bg.on("pointerout", () => {
-      bg.setFillStyle(color, 0.9);
+      bg.setAlpha(0.92);
       this.tweens.add({ targets: c, scaleX: 1, scaleY: 1, duration: 90, ease: "Quad.easeOut" });
     });
     return c;
@@ -267,9 +282,19 @@ export class HudScene extends Phaser.Scene {
   tick(): void {
     if (!this.cogText) return; // HUD not finished building yet
     const run = this.gameScene.run;
-    this.cogText.setText(`¢ ${run.economy.cogs}`);
 
-    this.phaseText.setText(this.phaseLabel());
+    // Animated Cog counter: ease the displayed value toward the real balance.
+    const target = run.economy.cogs;
+    if (Math.abs(this.displayedCogs - target) < 1) this.displayedCogs = target;
+    else this.displayedCogs += (target - this.displayedCogs) * 0.2;
+    this.cogText.setText(`${Math.round(this.displayedCogs)}`);
+
+    const phase = this.phaseLabel();
+    if (phase !== this.lastPhaseLabel) {
+      this.lastPhaseLabel = phase;
+      this.phaseText.setText(phase).setScale(0.6).setAlpha(0.2);
+      this.tweens.add({ targets: this.phaseText, scale: 1, alpha: 1, duration: 260, ease: "Back.easeOut" });
+    }
     this.waveText.setText(this.waveLabel());
 
     // Integrity bar.
@@ -348,7 +373,8 @@ export class HudScene extends Phaser.Scene {
     const baseY = this.paletteBottomY + 44;
     if (!data) {
       const hint = this.add.text(PANEL_X, baseY, "Select a device to inspect,\nor pick a BUILD item and click a tile.", {
-        fontSize: "11px",
+        fontFamily: FONTS.body,
+        fontSize: "12px",
         color: "#54637a",
       });
       this.panelContainer.add(hint);
@@ -356,11 +382,11 @@ export class HudScene extends Phaser.Scene {
     }
 
     let y = baseY;
-    const title = this.add.text(PANEL_X, y, data.title, { fontSize: "14px", color: data.color, fontStyle: "bold" });
+    const title = this.add.text(PANEL_X, y, data.title, { fontFamily: FONTS.display, fontSize: "15px", color: data.color, fontStyle: "bold" });
     this.panelContainer.add(title);
     y += 22;
     for (const line of data.lines) {
-      const t = this.add.text(PANEL_X, y, line, { fontSize: "11px", color: "#c2cedb", wordWrap: { width: PANEL_W } });
+      const t = this.add.text(PANEL_X, y, line, { fontFamily: FONTS.body, fontSize: "12px", color: "#c2cedb", wordWrap: { width: PANEL_W } });
       this.panelContainer.add(t);
       y += 16;
     }
@@ -401,8 +427,17 @@ export class HudScene extends Phaser.Scene {
   }
 
   setPaused(paused: boolean): void {
-    if (paused) this.showOverlay("PAUSED", [{ label: "Resume", onClick: () => this.gameScene.togglePause() }, { label: "Main Menu", onClick: () => this.gameScene.toMenu() }]);
+    if (paused)
+      this.showOverlay("PAUSED", [
+        { label: "Resume", onClick: () => this.gameScene.togglePause() },
+        { label: "Settings", onClick: () => this.openSettings() },
+        { label: "Main Menu", onClick: () => this.gameScene.toMenu() },
+      ]);
     else this.clearOverlay();
+  }
+
+  private openSettings(): void {
+    const panel = openSettings(this, PLAYFIELD_WIDTH / 2, GAME_HEIGHT / 2, () => panel.destroy());
   }
 
   showSummary(stats: WaveStats | null): void {
@@ -442,13 +477,17 @@ export class HudScene extends Phaser.Scene {
     this.clearOverlay();
     const dim = this.add.rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, 0x05080d, 0.78).setOrigin(0, 0);
     const cx = PLAYFIELD_WIDTH / 2;
+    // Painted dialog frame.
+    const dialogW = 420;
+    const dialogH = 130 + lines.length * 24 + buttons.length * 46;
+    const frame = makePanel(this, "ui.panel", cx - dialogW / 2, GAME_HEIGHT * 0.3 - 40, dialogW, dialogH);
     const title_ = this.add
-      .text(cx, GAME_HEIGHT * 0.3, title, { fontSize: "34px", color: `#${titleColor.toString(16)}`, fontStyle: "bold" })
+      .text(cx, GAME_HEIGHT * 0.3, title, { fontFamily: FONTS.display, fontSize: "34px", color: `#${titleColor.toString(16).padStart(6, "0")}`, fontStyle: "bold" })
       .setOrigin(0.5);
-    const objs: Phaser.GameObjects.GameObject[] = [dim, title_];
+    const objs: Phaser.GameObjects.GameObject[] = [dim, frame, title_];
     let y = GAME_HEIGHT * 0.3 + 44;
     for (const l of lines) {
-      objs.push(this.add.text(cx, y, l, { fontSize: "15px", color: "#c2cedb" }).setOrigin(0.5));
+      objs.push(this.add.text(cx, y, l, { fontFamily: FONTS.body, fontSize: "16px", color: "#c2cedb" }).setOrigin(0.5));
       y += 24;
     }
     y += 12;
